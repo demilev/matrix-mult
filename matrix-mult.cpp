@@ -1,13 +1,15 @@
-#include<iostream>
+#include <iostream>
+#include <thread>
+#include <chrono>
 
-void classic_matrix_mult(double** A, double** B, double** C, int n, int m, int k) 
+void classic_matrix_mult(double** A, double** B, double** C, int nFrom, int n, int mFrom, int m, int kFrom, int k) 
 {
-    for (int i = 0; i < n; i++) 
+    for (int i = nFrom; i < n; i++) 
     {
-        for (int j = 0; j < k; j++) 
+        for (int j = kFrom; j < k; j++) 
         {
             double prod = 0;
-            for (int t = 0; t < m; t++) 
+            for (int t = mFrom; t < m; t++) 
             {
                 prod += A[i][t] * B[t][j];
             }
@@ -38,10 +40,13 @@ void print_matrix(double** A, int n, int m)
         std::cout << std::endl;
     }
 }
-
+// try with non sharing matrices
+// add boost parameters parsing
 int main() 
-{
-    int n = 3, m = 3, k = 3;
+{   
+    auto start = std::chrono::high_resolution_clock::now();
+    int t = 4;
+    int n = 2048, m = 2048, k = 2048;
     double **A = new double*[n]; 
     double **B = new double*[m]; 
     double **C = new double*[n];
@@ -57,8 +62,28 @@ int main()
     }
     generate_random_matrix(A, n, m);
     generate_random_matrix(B, m, k);
-    print_matrix(A, n, m);
-    print_matrix(B, m, k);
-    classic_matrix_mult(A, B, C, n, m, k);
-    print_matrix(C, n, k);
+    auto gen = std::chrono::high_resolution_clock::now();
+    std::chrono::duration<double> genElapsed = gen - start;
+    std::cout << "time: " << genElapsed.count() << std::endl;
+
+    //print_matrix(A, n, m);
+    //print_matrix(B, m, k);
+    //classic_matrix_mult(A, B, C, 0, 2, 0, m, 0, k);
+    std::thread threads[t];
+    for (int i = 0; i < t; i++)
+    {   
+        int nFrom = (i * n) / t;
+        int nTo = ((i + 1) * n) / t;
+        std::cout << nFrom << " " << nTo << std::endl;
+        threads[i] = std::thread(&classic_matrix_mult, A, B, C, nFrom , nTo, 0, m, 0, k);
+    }
+
+    for (int i = 0; i < t; i++)
+    {
+        threads[i].join();
+    }
+    //print_matrix(C, n, k);
+    auto end = std::chrono::high_resolution_clock::now();
+    std::chrono::duration<double> elapsed = end - start;
+    std::cout << "time: " << elapsed.count() << std::endl;
 }
