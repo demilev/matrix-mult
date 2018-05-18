@@ -61,19 +61,6 @@ void generate_random_matrix(double** A, int n, int m)
     }
 }
 
-double** copyMatrix(double** A, int n, int m) 
-{
-    double **B = new double*[n];
-    for (int i = 0; i < n; i++) 
-    {
-        B[i] = new double[m];
-        for (int j = 0; j < m; j++)
-            B[i][j] = A[i][j];
-    }
-
-    return B;
-}
-
 void read_matrices(const string& input_file, double** &A, double** &B, int& n, int& m, int& k)
 {
     ifstream in(input_file);
@@ -264,22 +251,15 @@ int main(int argc, char **argv)
     }
 
     thread threads[t];
+    int number_of_cores = thread::hardware_concurrency();
     for (int i = 0; i < t; i++)
     {   
         int nFrom = (i * n) / t;
         int nTo = ((i + 1) * n) / t;
-        double** copyOfA = copyMatrix(A, n, m);
-        int* Ajunk = new int[131072];
-        double** copyOfB = copyMatrix(B, m, k);
-        int* Bjunk = new int[131072];
-        double** copyOfC = copyMatrix(C, n, k);
-        int* Cjunk = new int[131072];
-        
-
-        threads[i] = thread(&classic_matrix_mult, copyOfA, copyOfB, copyOfC, nFrom , nTo, 0, m, 0, k);
-    	cpu_set_t cpuset;
-    	CPU_ZERO(&cpuset);
-    	CPU_SET(i % 32, &cpuset);
+        threads[i] = thread(&classic_matrix_mult, A, B, C, nFrom , nTo, 0, m, 0, k);
+	cpu_set_t cpuset;
+	CPU_ZERO(&cpuset);
+	CPU_SET(i % number_of_cores, &cpuset);
     	int rc = pthread_setaffinity_np(threads[i].native_handle(), sizeof(cpu_set_t), &cpuset);
     }
 

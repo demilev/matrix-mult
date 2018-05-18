@@ -1,2 +1,5 @@
-compile : matrix-mult.o
-	g++ -std=c++11 matrix-mult.cpp -pthread -lboost_program_options
+FLAGS = -std=c++11 -pthread -lboost_program_options
+CC = g++
+compile :
+	$(CC) $(FLAGS) -o matrix-mult.o matrix-mult.cpp
+
