@@ -1,6 +1,7 @@
 #include <iostream>
 #include <fstream>
 
+#include <pthread.h>
 #include <thread>
 #include <mutex>
 #include <utmpx.h>
@@ -256,6 +257,10 @@ int main(int argc, char **argv)
         int nFrom = (i * n) / t;
         int nTo = ((i + 1) * n) / t;
         threads[i] = thread(&classic_matrix_mult, A, B, C, nFrom , nTo, 0, m, 0, k);
+    	cpu_set_t cpuset;
+    	CPU_ZERO(&cpuset);
+    	CPU_SET(i % 32, &cpuset);
+    	int rc = pthread_setaffinity_np(threads[i].native_handle(), sizeof(cpu_set_t), &cpuset);
     }
 
     for (int i = 0; i < t; i++)
