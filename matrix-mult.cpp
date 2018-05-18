@@ -1,9 +1,15 @@
 #include <iostream>
 #include <fstream>
+
 #include <thread>
+#include <mutex>
+#include <utmpx.h>
+
 #include <stdexcept>
+
 #include <string>
 #include <chrono>
+
 #include <boost/program_options.hpp>
 
 
@@ -15,13 +21,20 @@ using std::string;
 using std::invalid_argument;
 using std::ifstream;
 using std::ofstream;
-
+using std::mutex;
+using std::lock_guard;
 
 namespace po = boost::program_options;
 
+mutex iomutex;
 
 void classic_matrix_mult(double** A, double** B, double** C, int nFrom, int n, int mFrom, int m, int kFrom, int k) 
-{
+{   
+    {
+        lock_guard<mutex> iolock(iomutex);
+        std::cout << "Thread on CPU " << sched_getcpu() << "\n";
+    }
+
     for (int i = nFrom; i < n; i++) 
     {
         for (int j = kFrom; j < k; j++) 
@@ -237,12 +250,7 @@ int main(int argc, char **argv)
         }
     }
 
-    print_args(n, m, k, input_file, output_file, quite, t);
-    print_matrix(A, n, m);
-    print_matrix(B, m, k);
-    return 0;
-
-    thread threads[t];
+   thread threads[t];
     for (int i = 0; i < t; i++)
     {   
         int nFrom = (i * n) / t;
