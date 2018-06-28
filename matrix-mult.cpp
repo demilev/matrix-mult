@@ -11,6 +11,9 @@
 #include <algorithm>
 #include <string>
 #include <chrono>
+ 
+#include <ctime> 
+
 
 
 #include <boost/program_options.hpp>
@@ -27,18 +30,25 @@ using std::ifstream;
 using std::ofstream;
 using std::mutex;
 using std::lock_guard;
+using std::srand;
+using std::time;
 
 namespace po = boost::program_options;
 
 mutex iomutex;
 
-void matrix_mult(double** A, double** B, double** C, int nFrom, int n, int mFrom, int m, int kFrom, int k) 
+void matrix_mult(double** A, double** B, double** C, 
+                 int nFrom, int n, int mFrom, int m, int kFrom, int k, 
+                 bool quiet, int thread_number) 
 {   
+    if (!quiet)
     {
         lock_guard<mutex> iolock(iomutex);
-        std::cout << "Thread on CPU " << sched_getcpu() << "\n";
-    	std::cout << nFrom << " " << n << " " << mFrom << " " << m << " " << kFrom << " " << k << std::endl;
+        cout << "Thread-" << thread_number << " started.\n";
     }
+    
+    auto start = std::chrono::high_resolution_clock::now();
+
     for (int i = nFrom; i < n; i++) 
     {
         for (int j = kFrom; j < k; j++) 
@@ -51,16 +61,27 @@ void matrix_mult(double** A, double** B, double** C, int nFrom, int n, int mFrom
             C[i][j] = prod;
         }
     }
+
+    auto end = std::chrono::high_resolution_clock::now();
+    std::chrono::duration<double> elapsed = end - start;
+    auto millis = std::chrono::duration_cast<std::chrono::milliseconds>(elapsed).count();
+
+    if (!quiet)
+    {
+        lock_guard<mutex> iolock(iomutex);
+        cout << "Thread-" << thread_number << " stopped.\n";
+        cout << "Thread-" << thread_number << " execution time was (millis): " << millis << ".\n";
+    }
 }
 
 void generate_random_matrix(double** A, int n, int m) 
-{
-    //std::cout << n << " " << m << std::endl;
+{   
+
     for (int i = 0; i < n; i++)
     {
         for (int j = 0; j < m; j++) 
         {
-            A[i][j] = rand() % 10;
+            A[i][j] = (double)rand() / RAND_MAX;
         }
     }
 }
@@ -116,38 +137,24 @@ void read_matrices(const string& input_file, double** &A, double** &B, int& n, i
 }
 
 
-void print_matrix(double** A, int n, int m)
-{
+void persist_matrix(double** A, int n, int m, ofstream& out)
+{   
+    out << n << " " << m << endl;
     for (int i = 0; i < n; i++)
     {
         for (int j = 0; j < m; j++)
         {
-            cout << A[i][j] << " ";
+            out << A[i][j] << " ";
         }
-        cout << endl;
+        out << endl;
     }
 }
 
-void print_args(int n, int m, int k, string input, string output, bool quite, int t)
-{
-    cout << "N = " << n << endl
-         << "M = " << m << endl
-         << "K = " << k << endl
-         << "Input = " << input << endl
-         << "Output = " << output << endl
-         << "Quite = " << quite << endl
-         << "T = " << t << endl;
-}
-
-
 int main(int argc, char **argv) 
 {   
-    // start the timer
-    auto start = std::chrono::high_resolution_clock::now();
-
     int t = 1, n = 0, m = 0, k = 0;
-    bool quite = false, generate_random = false;
-    string output_file = "", input_file = "";
+    bool quiet = false, generate_random = false;
+    string output_file, input_file;
 
     po::options_description desc("Options");
     desc.add_options()
@@ -156,7 +163,7 @@ int main(int argc, char **argv)
         ("mcols,m", po::value<int>(), "number of columns of first matrix and rows of second matrix")
         ("kcols,k", po::value<int>(), "number of columns of second matrix")
         ("input,i", po::value<string>(), "input file with both matrices; this option has bigger priority than -n,-m,-k")
-        ("output,o", po::value<string>(), "output file for the result matix")
+        ("output,o", po::value<string>()->default_value(""), "output file for the result matix")
         ("tasks,t", po::value<int>()->default_value(1), "number of threads to be used")
         ("quiet,q", po::bool_switch()->default_value(false), "quiet mode");
     
@@ -183,14 +190,6 @@ int main(int argc, char **argv)
         return 0;
     }
     
-    // argument -o(--output) is mandatory
-    if (!vm.count("output"))
-    {
-        cout << "You must specify the output matrix file." << endl 
-             << "Use -h [ --help ] to see information about usage." << endl;
-        return 0;
-    }
-
     // argument -i(--input) has higher priority than -n, -m and -k
     if (!vm.count("input"))
     {
@@ -219,10 +218,7 @@ int main(int argc, char **argv)
 
     t = vm["tasks"].as<int>();
     output_file = vm["output"].as<string>();
-    if (vm.count("quiet"))
-    {
-        quite = true;
-    }
+    quiet = vm["quiet"].as<bool>();
     
     double **A;
     double **B;
@@ -246,6 +242,7 @@ int main(int argc, char **argv)
             B[i] = new double[k];
         }
         
+        srand(time(NULL));
         generate_random_matrix(A, n, m);
         generate_random_matrix(B, m, k);
     }
@@ -263,23 +260,26 @@ int main(int argc, char **argv)
         }
     }
     
-    // start calculation
-    thread threads[t];
+    // start the timer
+    auto start = std::chrono::high_resolution_clock::now();
 
+    /*
+     * because of the way the task is splitted into
+     * subtasks, we have to make sure that the 
+     * number of threads that we are going to start
+     * is no more than the rows of matrix A
+     */
     int max_threads = std::min(n, t);
-    int number_of_cores = thread::hardware_concurrency();
     thread threads[max_threads];
     for (int i = 0; i < max_threads; i++)
     {   
         int nFrom = (i * n) / max_threads;
         int nTo = ((i + 1) * n) / max_threads;
-        threads[i] = thread(&classic_matrix_mult, A, B, C, nFrom , nTo, 0, m, 0, k);
-	cpu_set_t cpuset;
-	CPU_ZERO(&cpuset);
-	CPU_SET(i % number_of_cores, &cpuset);
-    	int rc = pthread_setaffinity_np(threads[i].native_handle(), sizeof(cpu_set_t), &cpuset);
-    }
+        // start each thread to calculate its sector of the result matrix
+        threads[i] = thread(&matrix_mult, A, B, C, nFrom , nTo, 0, m, 0, k, quiet, i + 1);
+	}
 
+    // join the threads to wait there execution
     for (int i = 0; i < max_threads; i++)
     {
         threads[i].join();
@@ -287,5 +287,16 @@ int main(int argc, char **argv)
     
     auto end = std::chrono::high_resolution_clock::now();
     std::chrono::duration<double> elapsed = end - start;
-    cout << "time: " << elapsed.count() << endl;
+    auto millis = std::chrono::duration_cast<std::chrono::milliseconds>(elapsed).count();
+
+    // output the result matrix if -o(--output) is set
+    if (!output_file.empty())
+    {   
+        ofstream out(output_file);
+        persist_matrix(C, n, k, out);
+    }
+    
+    // print total execution time
+    cout << "Threads used in current run: " << max_threads << ".\n";
+    cout << "Total execution time for current run (millis): " << millis << ".\n";
 }
