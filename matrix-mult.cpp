@@ -29,7 +29,7 @@ namespace po = boost::program_options;
 
 mutex iomutex;
 
-void classic_matrix_mult(double** A, double** B, double** C, int nFrom, int n, int mFrom, int m, int kFrom, int k) 
+void matrix_mult(double** A, double** B, double** C, int nFrom, int n, int mFrom, int m, int kFrom, int k) 
 {   
     {
         lock_guard<mutex> iolock(iomutex);
@@ -138,6 +138,9 @@ void print_args(int n, int m, int k, string input, string output, bool quite, in
 
 int main(int argc, char **argv) 
 {   
+    // start the timer
+    auto start = std::chrono::high_resolution_clock::now();
+
     int t = 1, n = 0, m = 0, k = 0;
     bool quite = false, generate_random = false;
     string output_file = "", input_file = "";
@@ -154,6 +157,8 @@ int main(int argc, char **argv)
         ("quiet,q", po::bool_switch()->default_value(false), "quiet mode");
     
     po::variables_map vm;
+
+    // parse command line arguments
     try
     {
         po::store(po::parse_command_line(argc, argv, desc), vm);
@@ -164,12 +169,17 @@ int main(int argc, char **argv)
         return 0;
     }
 
+    /*
+     * if command line argument -h(--help) is set 
+     * then just print help text and exit the rpogram 
+     */
     if (vm.count("help"))
     {
         cout << "Matrix multiplication program options:" << endl << desc << endl;
         return 0;
     }
     
+    // argument -o(--output) is mandatory
     if (!vm.count("output"))
     {
         cout << "You must specify the output matrix file." << endl 
@@ -177,6 +187,7 @@ int main(int argc, char **argv)
         return 0;
     }
 
+    // argument -i(--input) has higher priority than -n, -m and -k
     if (!vm.count("input"))
     {
         if (!vm.count("nrows") || !vm.count("mcols") || !vm.count("kcols"))
@@ -202,20 +213,18 @@ int main(int argc, char **argv)
         }   
     }
 
-    auto start = std::chrono::high_resolution_clock::now();
-    
     t = vm["tasks"].as<int>();
     output_file = vm["output"].as<string>();
     if (vm.count("quiet"))
     {
         quite = true;
     }
-
     
     double **A;
     double **B;
     double **C;
 
+    // generate matrixes or read them from the input file
     if (generate_random)
     {
         A = new double*[n]; 
@@ -249,14 +258,15 @@ int main(int argc, char **argv)
             return 0;
         }
     }
-
+    
+    // start calculation
     thread threads[t];
     int number_of_cores = thread::hardware_concurrency();
     for (int i = 0; i < t; i++)
     {   
         int nFrom = (i * n) / t;
         int nTo = ((i + 1) * n) / t;
-        threads[i] = thread(&classic_matrix_mult, A, B, C, nFrom , nTo, 0, m, 0, k);
+        threads[i] = thread(&matrix_mult, A, B, C, nFrom , nTo, 0, m, 0, k);
 	cpu_set_t cpuset;
 	CPU_ZERO(&cpuset);
 	CPU_SET(i % number_of_cores, &cpuset);
