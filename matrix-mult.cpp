@@ -8,14 +8,17 @@
 
 #include <stdexcept>
 
+#include <algorithm>
 #include <string>
 #include <chrono>
+
 
 #include <boost/program_options.hpp>
 
 
 using std::cout;
 using std::endl;
+using std::min;
 using std::thread;
 using std::cerr;
 using std::string;
@@ -34,8 +37,8 @@ void classic_matrix_mult(double** A, double** B, double** C, int nFrom, int n, i
     {
         lock_guard<mutex> iolock(iomutex);
         std::cout << "Thread on CPU " << sched_getcpu() << "\n";
+    	std::cout << nFrom << " " << n << " " << mFrom << " " << m << " " << kFrom << " " << k << std::endl;
     }
-
     for (int i = nFrom; i < n; i++) 
     {
         for (int j = kFrom; j < k; j++) 
@@ -52,9 +55,10 @@ void classic_matrix_mult(double** A, double** B, double** C, int nFrom, int n, i
 
 void generate_random_matrix(double** A, int n, int m) 
 {
+    //std::cout << n << " " << m << std::endl;
     for (int i = 0; i < n; i++)
     {
-        for (int j = 0; j < n; j++) 
+        for (int j = 0; j < m; j++) 
         {
             A[i][j] = rand() % 10;
         }
@@ -250,12 +254,13 @@ int main(int argc, char **argv)
         }
     }
 
-    thread threads[t];
+    int max_threads = std::min(n, t);
     int number_of_cores = thread::hardware_concurrency();
-    for (int i = 0; i < t; i++)
+    thread threads[max_threads];
+    for (int i = 0; i < max_threads; i++)
     {   
-        int nFrom = (i * n) / t;
-        int nTo = ((i + 1) * n) / t;
+        int nFrom = (i * n) / max_threads;
+        int nTo = ((i + 1) * n) / max_threads;
         threads[i] = thread(&classic_matrix_mult, A, B, C, nFrom , nTo, 0, m, 0, k);
 	cpu_set_t cpuset;
 	CPU_ZERO(&cpuset);
@@ -263,7 +268,7 @@ int main(int argc, char **argv)
     	int rc = pthread_setaffinity_np(threads[i].native_handle(), sizeof(cpu_set_t), &cpuset);
     }
 
-    for (int i = 0; i < t; i++)
+    for (int i = 0; i < max_threads; i++)
     {
         threads[i].join();
     }
