@@ -10,10 +10,10 @@ def calculate_average(t, number_of_executions=5):
     results = []
 
     for i in range(5):
-        output = subprocess.check_output(["./matrix-mult.o -m 512 -n 512 -k 512 -q -t " + str(t)], shell=True)
+        output = subprocess.check_output(["./matrix-mult.o -m 1024 -n 1024 -k 1024 -q -t " + str(t)], shell=True)
         m = re.search("\d+", output.split('\n')[1])
         results.append(m.group(0))
-
+    
     return mean([int(r) for r in results])
 
 with open("results.txt", "w+") as results_file:
