@@ -1,11 +1,12 @@
 import subprocess
 import re
 
-execution_times = []
-
+# function for calculating mean of array
 def mean(numbers):
     return float(sum(numbers)) / len(numbers)
 
+# function for calculating the average time
+# of execution with t threads
 def calculate_average(t, number_of_executions=5):
     results = []
 
@@ -16,6 +17,7 @@ def calculate_average(t, number_of_executions=5):
     
     return mean([int(r) for r in results])
 
+# write results to txt file in csv format
 with open("results.txt", "w+") as results_file:
     results_file.write("Num of threads,Elapsed time\n")
     for t in range(1, 17):
